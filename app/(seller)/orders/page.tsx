@@ -11,7 +11,6 @@ interface Order {
   status: string
   total_amount: number
   currency: string
-  pickup_code: string | null
   created_at: string
   items: OrderItem[]
 }
