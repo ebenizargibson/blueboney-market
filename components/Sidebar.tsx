@@ -9,7 +9,7 @@ const NAV = [
   { href: '/products',  icon: Package,          label: 'Products' },
   { href: '/campaigns', icon: Megaphone,        label: 'Ad Campaigns' },
   { href: '/returns',   icon: RotateCcw,        label: 'Returns' },
-  { href: '/approvals', icon: CheckSquare,      label: 'Listing Status' },
+  { href: '/listings', icon: CheckSquare,      label: 'Listing Status' },
 ]
 
 export default function Sidebar() {

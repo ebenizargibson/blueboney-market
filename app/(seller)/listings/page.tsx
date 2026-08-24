@@ -66,7 +66,7 @@ const TABS: { key: Tab; label: string }[] = [
 
 const LIMIT = 50
 
-export default function ApprovalsPage() {
+export default function ListingStatusPage() {
   const [products, setProducts]     = useState<Product[]>([])
   const [total, setTotal]           = useState(0)
   const [loading, setLoading]       = useState(true)
