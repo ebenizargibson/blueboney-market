@@ -10,6 +10,19 @@ interface SellerAccounts {
   } | null
 }
 
+// Listing status for this seller's own products.
+//
+// This page used to call admin/marketplace/products and offer Approve and
+// Reject buttons — a platform moderation console sitting in the seller portal.
+// It could never have worked: that route is gated by requireAdminCS, so every
+// seller was refused. Approval is Blue Boney's decision and a seller must not
+// review their own listing, so the actions are gone and this reads the seller's
+// own products instead.
+//
+// The backend already refused self-approval independently, which is the part
+// that matters and was verified rather than assumed: creating a product with
+// status "approved" is stored as pending, and patching status to "approved" is
+// accepted and ignored. This page no longer asks for something it cannot have.
 interface Product {
   id: string
   title: string
@@ -61,16 +74,13 @@ export default function ApprovalsPage() {
   const [tab, setTab]               = useState<Tab>('pending')
   const [pendingCount, setPending]  = useState(0)
   const [offset, setOffset]         = useState(0)
-  const [acting, setActing]         = useState<string | null>(null)
-  const [notes, setNotes]           = useState<Record<string, string>>({})
-  const [feedback, setFeedback]     = useState<Record<string, { msg: string; ok: boolean }>>({})
 
   const fetchProducts = useCallback(async (currentTab: Tab, off: number, append: boolean) => {
     if (!append) setLoading(true)
     setError('')
     try {
       const res  = await fetch(
-        `/api/proxy/admin/marketplace/products?status=${currentTab}&limit=${LIMIT}&offset=${off}`,
+        `/api/proxy/shop/seller/products?status=${currentTab}&limit=${LIMIT}&offset=${off}`,
       )
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Failed to load products')
@@ -86,7 +96,7 @@ export default function ApprovalsPage() {
 
   const fetchPendingCount = useCallback(async () => {
     try {
-      const res  = await fetch('/api/proxy/admin/marketplace/products?status=pending&limit=1&offset=0')
+      const res  = await fetch('/api/proxy/shop/seller/products?status=pending&limit=1&offset=0')
       const json = await res.json()
       setPending(json.total ?? 0)
     } catch {
@@ -101,48 +111,6 @@ export default function ApprovalsPage() {
     fetchPendingCount()
   }, [tab, fetchProducts, fetchPendingCount])
 
-  const handleAction = async (product: Product, action: 'approved' | 'rejected') => {
-    setActing(product.id)
-    setFeedback(prev => ({ ...prev, [product.id]: { msg: '', ok: false } }))
-    try {
-      const res  = await fetch('/api/proxy/admin/marketplace/products', {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          product_id: product.id,
-          action,
-          note: notes[product.id]?.trim() || undefined,
-        }),
-      })
-      const json = await res.json()
-      if (res.ok && (json.success || json.product)) {
-        setFeedback(prev => ({
-          ...prev,
-          [product.id]: {
-            msg: action === 'approved' ? 'Product approved' : 'Product rejected',
-            ok:  true,
-          },
-        }))
-        setTimeout(() => {
-          fetchProducts(tab, 0, false)
-          fetchPendingCount()
-          setOffset(0)
-        }, 1000)
-      } else {
-        setFeedback(prev => ({
-          ...prev,
-          [product.id]: { msg: json.error ?? 'Action failed', ok: false },
-        }))
-      }
-    } catch {
-      setFeedback(prev => ({
-        ...prev,
-        [product.id]: { msg: 'Something went wrong', ok: false },
-      }))
-    } finally {
-      setActing(null)
-    }
-  }
 
   const loadMore = () => {
     const next = offset + LIMIT
@@ -159,8 +127,8 @@ export default function ApprovalsPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Product Approvals</h1>
-        <p className="text-sm text-gray-500 mt-1">Review and approve marketplace product listings</p>
+        <h1 className="text-2xl font-bold text-gray-900">Listing Status</h1>
+        <p className="text-sm text-gray-500 mt-1">Where your listings are in Blue Boney&rsquo;s review</p>
       </div>
 
       <div className="flex gap-2 mb-6 border-b border-gray-200">
@@ -202,8 +170,6 @@ export default function ApprovalsPage() {
           const riskClass  = RISK_BADGE[p.risk_tier ?? 'low'] ?? RISK_BADGE.low
           const planClass  = PLAN_BADGE[seller?.plan_type ?? 'free'] ?? PLAN_BADGE.free
           const isPending  = p.status === 'pending'
-          const isActing   = acting === p.id
-          const fb         = feedback[p.id]
           const thumb      = p.images?.[0]
 
           return (
@@ -279,41 +245,6 @@ export default function ApprovalsPage() {
                 <p className="text-xs text-gray-500 bg-gray-50 rounded p-2 italic">Note: {p.approval_note}</p>
               )}
 
-              {fb?.msg && (
-                <p className={`text-sm font-medium ${fb.ok ? 'text-green-700' : 'text-red-600'}`}>
-                  {fb.ok ? '✓ ' : '✗ '}{fb.msg}
-                </p>
-              )}
-
-              {isPending && (
-                <div className="border-t border-gray-100 pt-3 space-y-2">
-                  <input
-                    type="text"
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                    placeholder="Optional approval note…"
-                    value={notes[p.id] ?? ''}
-                    onChange={e => setNotes(prev => ({ ...prev, [p.id]: e.target.value }))}
-                    maxLength={500}
-                    disabled={isActing}
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleAction(p, 'approved')}
-                      disabled={isActing}
-                      className="flex-1 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-                    >
-                      {isActing ? 'Processing…' : 'Approve'}
-                    </button>
-                    <button
-                      onClick={() => handleAction(p, 'rejected')}
-                      disabled={isActing}
-                      className="flex-1 py-2 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
-                    >
-                      {isActing ? 'Processing…' : 'Reject'}
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           )
         })}
