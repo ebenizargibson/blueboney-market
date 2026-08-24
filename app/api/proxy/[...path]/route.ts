@@ -22,9 +22,19 @@ async function proxy(req: NextRequest, path: string[]) {
   const requested = path.join('/')
 
   const ALLOWED_PREFIXES = [
-    'shop/',                        // seller dashboard, products, orders, returns, ads
-    'admin/marketplace/products',   // the marketplace catalogue view the portal embeds
+    'shop/',   // seller dashboard, products, orders, returns, ads
   ]
+  // admin/marketplace/products was allowlisted for the approvals page. It is
+  // removed because it can never work: that backend route is gated by
+  // requireAdminCS, so a seller token is refused with 403 no matter what the
+  // proxy permits. Verified against production with a real session — the proxy
+  // forwarded it and the backend declined.
+  //
+  // The page itself is platform moderation living in the seller portal, and it
+  // has presumably never loaded. Whether it belongs in the admin portal, or
+  // sellers should instead see their OWN pending products through a
+  // seller-scoped endpoint, is a product decision. Until then this prefix only
+  // widened what a stolen market_token could reach, in exchange for nothing.
 
   if (!ALLOWED_PREFIXES.some(prefix => requested === prefix.replace(/\/$/, '') || requested.startsWith(prefix))) {
     return NextResponse.json({ error: 'not_proxyable', path: requested }, { status: 403 })
