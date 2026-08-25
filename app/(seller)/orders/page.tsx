@@ -69,13 +69,24 @@ export default function OrdersPage() {
 
   async function markReady(orderId: string) {
     setMarking(prev => ({ ...prev, [orderId]: true }))
+    setError('')
     try {
-      await fetch(`/api/proxy/shop/orders/${orderId}`, {
+      // The SELLER route. This used to PATCH /shop/orders/[id], which is the
+      // buyer-facing one and exports only GET and DELETE — so every attempt
+      // returned 405 while the screen cheerfully showed the order as ready.
+      const res = await fetch(`/api/proxy/shop/seller/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'ready' }),
       })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        setError(body?.message ?? body?.error ?? 'Could not mark that order ready')
+        return
+      }
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ready' } : o))
+    } catch {
+      setError('Could not reach the server')
     } finally {
       setMarking(prev => ({ ...prev, [orderId]: false }))
     }
@@ -84,14 +95,28 @@ export default function OrdersPage() {
   async function completeOrder(orderId: string) {
     const code = pickupInputs[orderId] ?? ''
     setCompleting(prev => ({ ...prev, [orderId]: true }))
+    setError('')
     try {
-      await fetch(`/api/proxy/shop/orders/${orderId}`, {
+      // Wrong route AND wrong field: the server reads `handover_code`, so the
+      // buyer's code was being dropped even had the path been right. Completing
+      // an order releases the money held in escrow, so the server refuses it
+      // without the code — and this screen was reporting success regardless,
+      // which meant a seller could believe goods had been handed over and paid
+      // for when neither had happened.
+      const res = await fetch(`/api/proxy/shop/seller/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed', pickup_code: code }),
+        body: JSON.stringify({ status: 'completed', handover_code: code }),
       })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        setError(body?.message ?? body?.error ?? 'Could not complete that order')
+        return
+      }
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'completed' } : o))
       setPickupInputs(prev => { const n = { ...prev }; delete n[orderId]; return n })
+    } catch {
+      setError('Could not reach the server')
     } finally {
       setCompleting(prev => ({ ...prev, [orderId]: false }))
     }
